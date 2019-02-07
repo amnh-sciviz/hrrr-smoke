@@ -19,11 +19,10 @@ parser.add_argument('-start', dest="START_DATETIME", default="2018-11-08-18", he
 parser.add_argument('-end', dest="END_DATETIME", default="2018-11-10-12", help="End date and time in format yyyy-mm-dd-hh")
 parser.add_argument('-hours', dest="RESOLUTION_HOURS", default=6, type=int, help="Temporal resolution of data in hours")
 parser.add_argument('-grad', dest="COLOR_GRADIENT", default="inferno", help="Inferno or magma")
-parser.add_argument('-dim', dest="OUTPUT_DIMENSIONS", default="1920X1080", help="Dimensions of output video")
 parser.add_argument('-dur', dest="DURATION", default=60, type=int, help="Target duration in seconds")
 parser.add_argument('-fps', dest="FPS", default=30, type=int, help="Target frames per second")
 parser.add_argument('-message', dest="MESSAGE", default=11, type=int, help="Message number to parse")
-parser.add_argument('-dim', dest="OUTPUT_DIMENSIONS", default="1920X1080", help="Dimensions of output video")
+parser.add_argument('-dim', dest="OUTPUT_DIMENSIONS", default="1920x1080", help="Dimensions of output video")
 parser.add_argument('-bounds', dest="BOUNDS", default="-135,50,-75,50", help="Geographic boundary top left point and top right point in format: lon_tl,lat_tl,lon_tr,lat_tr")
 a = parser.parse_args()
 
@@ -33,3 +32,11 @@ endYear, endMonth, endDay, endHour = tuple([int(d) for d in a.START_DATETIME.str
 colorGradient = getColorGradient(a.COLOR_GRADIENT)
 outWidth, outHeight = tuple([int(d) for d in a.OUTPUT_DIMENSIONS.strip().split("x")])
 lonTL, latTL, lonTR, latTR = tuple([float(d) for d in a.BOUNDS.strip().split(",")])
+
+startDatetime = datetime.strptime(a.START_DATETIME, "%Y-%m-%d-%H")
+endDatetime = datetime.strptime(a.END_DATETIME, "%Y-%m-%d-%H")
+
+dt = startDateTime
+
+while dt <= endDatetime:
+    dt += datetime.timedelta(hours=a.RESOLUTION_HOURS)
