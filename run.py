@@ -8,7 +8,6 @@ import numpy as np
 import os
 from PIL import Image
 from pprint import pprint
-import pygrib
 import subprocess
 import sys
 
@@ -26,10 +25,12 @@ parser.add_argument('-fps', dest="FPS", default=30, type=int, help="Target frame
 parser.add_argument('-message', dest="MESSAGE", default=11, type=int, help="Message number to parse")
 parser.add_argument('-fhours', dest="TOTAL_FORECAST_HOURS", default=37, type=int, help="Total available forecast hours per datatime")
 parser.add_argument('-dim', dest="OUTPUT_DIMENSIONS", default="1920x1080", help="Dimensions of output video")
-parser.add_argument('-drange', dest="DATA_RANGE", default="0,200", help="Expected data range (to determine data color); reduce max for more dramatic colors")
+parser.add_argument('-drange', dest="DATA_RANGE", default="0,30", help="Expected data range (to determine data color); reduce max for more dramatic colors")
+parser.add_argument('-root', dest="ROOT_DATA", default=2.0, type=float, help="Apply root to data, 0 for none")
 parser.add_argument('-overwrite', dest="OVERWRITE", action="store_true")
 parser.add_argument('-device', dest="BUTTERFLOW_DEVICE", default=-1, type=int, help="Set a specific butterflow device (run butterflow -d for device numbers)")
 parser.add_argument('-cache', dest="CACHE_DIR", default="data/", help="Cache directory")
+parser.add_argument('-steps', dest="STEPS", default=-1, type=int, help="Number of steps to execute; -1 for all")
 a = parser.parse_args()
 
 # Parse arguments
@@ -77,6 +78,9 @@ while dt <= endDatetime:
                 fromCache = True
 
             elif os.path.isfile(filename):
+                # only import pygrib if we have to
+                if 'pygrib' not in sys.modules:
+                    import pygrib
 
                 print("Reading %s" % filename)
                 grbs = pygrib.open(filename)
@@ -91,6 +95,9 @@ while dt <= endDatetime:
             ny, nx = values.shape
             # lats, lons = grb.latlons()
             # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
+
+            if a.ROOT_DATA > 0:
+                values = np.power(values, 1.0 / a.ROOT_DATA)
 
             if doCache and not fromCache:
                 np.save(cacheFilename, values)
@@ -113,6 +120,9 @@ while dt <= endDatetime:
     print("--------")
     dt += timedelta(hours=a.RESOLUTION_HOURS)
 
+if a.STEPS == 1:
+    sys.exit()
+
 extension = "." + a.FILE_OUT.split(".")[-1]
 rawOutputfilename = a.FILE_OUT[:-len(extension)] + "_raw" + extension
 if not os.path.isfile(rawOutputfilename) or a.OVERWRITE:
@@ -132,9 +142,13 @@ if not os.path.isfile(rawOutputfilename) or a.OVERWRITE:
 else:
     print("Already created %s" % rawOutputfilename)
 
+if a.STEPS == 2:
+    sys.exit()
+
 print("Interpolating frames...")
 command = ['butterflow','-s',
             'a=0,b=end,dur=%s' % a.DURATION,
+            '-v', # verbose
             '-o', a.FILE_OUT]
 if a.BUTTERFLOW_DEVICE >= 0:
     command += ['-device', str(a.BUTTERFLOW_DEVICE)]
