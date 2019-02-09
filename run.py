@@ -29,9 +29,11 @@ parser.add_argument('-dim', dest="OUTPUT_DIMENSIONS", default="1920x1080", help=
 parser.add_argument('-drange', dest="DATA_RANGE", default="0,200", help="Expected data range (to determine data color); reduce max for more dramatic colors")
 parser.add_argument('-overwrite', dest="OVERWRITE", action="store_true")
 parser.add_argument('-device', dest="BUTTERFLOW_DEVICE", default=-1, type=int, help="Set a specific butterflow device (run butterflow -d for device numbers)")
+parser.add_argument('-cache', dest="CACHE_DIR", default="data/", help="Cache directory")
 a = parser.parse_args()
 
 # Parse arguments
+doCache = len(a.CACHE_DIR) > 0
 startYear, startMonth, startDay, startHour = tuple([int(d) for d in a.START_DATETIME.strip().split("-")])
 endYear, endMonth, endDay, endHour = tuple([int(d) for d in a.START_DATETIME.strip().split("-")])
 colorGradient = getColorGradient(a.COLOR_GRADIENT)
@@ -45,6 +47,8 @@ if not os.path.exists(os.path.dirname(a.FILE_OUT)):
     os.makedirs(os.path.dirname(a.FILE_OUT))
 if not os.path.exists(os.path.dirname(a.FRAME_OUT)):
     os.makedirs(os.path.dirname(a.FRAME_OUT))
+if doCache and not os.path.exists(os.path.dirname(a.CACHE_DIR)):
+    os.makedirs(os.path.dirname(a.CACHE_DIR))
 
 if a.TOTAL_FORECAST_HOURS < a.RESOLUTION_HOURS:
     print("Not enough forecast hours (%s) to fill resolution (%s)" % (a.TOTAL_FORECAST_HOURS, a.RESOLUTION_HOURS))
@@ -59,37 +63,52 @@ while dt <= endDatetime:
     hours = a.RESOLUTION_HOURS if dt < endDatetime else a.TOTAL_FORECAST_HOURS
     for hour in range(hours):
         filename = dt.strftime(a.FILE_PATTERN).replace("{ff}", str(hour).zfill(2))
-        if os.path.isfile(filename):
-            frameFilename = a.FRAME_OUT % str(frame).zfill(padZeros)
-            frame += 1
+        cacheFilename = a.CACHE_DIR + dt.strftime("%Y%m%d%H_") + os.path.basename(filename) + ".npy"
+        values = None
+        frameFilename = a.FRAME_OUT % str(frame).zfill(padZeros)
+        frame += 1
 
-            if not os.path.isfile(frameFilename) or a.OVERWRITE:
+        if not os.path.isfile(frameFilename) or a.OVERWRITE:
+            fromCache = False
+
+            if os.path.isfile(cacheFilename):
+                print("Loading from cache %s" % cacheFilename)
+                values = np.load(cacheFilename)
+                fromCache = True
+
+            elif os.path.isfile(filename):
+
                 print("Reading %s" % filename)
                 grbs = pygrib.open(filename)
                 grb = grbs.message(a.MESSAGE)
 
                 values = grb["values"]
-                ny, nx = values.shape
-                # lats, lons = grb.latlons()
-                # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
 
-                # print("Lat/lon in range: (%s, %s) (%s, %s)" % (lon0, lat1, lon1, lat0))
-                pixels = dataToPixels(values, (dMin, dMax), colorGradient)
-                im = Image.fromarray(pixels, mode="RGB")
+            if values is None:
+                print("Could not find file %s" % filename)
+                sys.exit()
 
-                if nx != outWidth:
-                    nratio = 1.0 * nx / ny
-                    outHeight = int(round(outWidth / nratio))
-                    im = im.resize((outWidth, outHeight), resample=Image.BICUBIC)
+            ny, nx = values.shape
+            # lats, lons = grb.latlons()
+            # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
 
-                im.save(frameFilename)
-                print("Created frame: %s" % frameFilename)
+            if doCache and not fromCache:
+                np.save(cacheFilename, values)
 
-            else:
-                print("Already created frame: %s" % frameFilename)
+            # print("Lat/lon in range: (%s, %s) (%s, %s)" % (lon0, lat1, lon1, lat0))
+            pixels = dataToPixels(values, (dMin, dMax), colorGradient)
+            im = Image.fromarray(pixels, mode="RGB")
+
+            if nx != outWidth:
+                nratio = 1.0 * nx / ny
+                outHeight = int(round(outWidth / nratio))
+                im = im.resize((outWidth, outHeight), resample=Image.BICUBIC)
+
+            im.save(frameFilename)
+            print("Created frame: %s" % frameFilename)
 
         else:
-            print("Could not find %s" % filename)
+                print("Already created frame: %s" % frameFilename)
 
     print("--------")
     dt += timedelta(hours=a.RESOLUTION_HOURS)
