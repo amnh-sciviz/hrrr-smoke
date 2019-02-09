@@ -57,10 +57,10 @@ def dataToPixels(values, vRange, colorGradient, bg=None):
         float value = values[posy * nx + posx];
         float nvalue = norm(value, dmin, dmax);
 
-        // ease out quart to make low values more visible
-        int pvalue = 4; // increase to make lower values more visible
+        // ease out to make low values more visible
         float nnvalue = nvalue - 1.0;
-        nvalue = 1.0 - pow(nnvalue, pvalue);
+        // nvalue = 1.0 - pow(nnvalue, 4); // quad
+        nvalue = 1.0 + pow(nnvalue, 5); // quint
 
         // retrieve color
         int colorIndex = (int) round(nvalue * (float)(colorCount - 1));
@@ -637,6 +637,18 @@ def getColorGradient(name="inferno", multiply=255, toInt=True):
              [0.982257, 0.994109, 0.631017],
              [0.988362, 0.998364, 0.644924]]
     # data = data[int(len(data)/10):]
+
+    # ease out the colors to reduce too much black
+    dlen = len(data)
+    easedIndices = [v for v in range(dlen)]
+    for i in range(dlen):
+        n = 1.0 * i / (dlen-1)
+        # n = pow(n-1, 3) + 1 # cubic
+        n = n * (2 - n) # quad
+        j = int(round(n * (dlen-1)))
+        easedIndices[i] = j
+    data = [data[i] for i in easedIndices]
+
     data = np.array(data)
     if multiply:
         data *= multiply
