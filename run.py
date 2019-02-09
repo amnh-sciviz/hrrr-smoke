@@ -99,6 +99,11 @@ while dt <= endDatetime:
             if a.ROOT_DATA > 0:
                 values = np.power(values, 1.0 / a.ROOT_DATA)
 
+            # from matplotlib import pyplot as plt
+            # plt.hist(values.reshape(-1), bins=1000)
+            # plt.show()
+            # sys.exit()
+
             if doCache and not fromCache:
                 np.save(cacheFilename, values)
 
