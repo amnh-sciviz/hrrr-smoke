@@ -12,3 +12,4 @@ Repository for visualizing [HRRR smoke data from NOAA](https://rapidrefresh.noaa
 - [Pillow](https://pillow.readthedocs.io/en/stable/) for image generation
 - [PyOpenCL](https://mathema.tician.de/software/pyopencl/) for GPU-accelerated processing of data and images
 - [FFmpeg](https://www.ffmpeg.org/) for converting image sequences to video
+- [Butterflow](https://github.com/dthpham/butterflow) for frame interpolation (if necessary)

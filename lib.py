@@ -1,4 +1,118 @@
 import numpy as np
+import os
+from pprint import pprint
+import pyopencl as cl
+
+os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
+
+def dataToPixels(values, vRange, colorGradient, bg=None):
+    ny, nx = values.shape
+    result = np.zeros(ny * nx * 3, dtype=np.uint8)
+
+    alpha = 1.0
+    if bg is None:
+        bg = np.zeros(ny * nx * 3, dtype=np.uint8)
+        alpha = 0.8 # reduce to make bg more prominent
+
+    dMin, dMax = vRange
+
+    # flatten all data
+    values = values.astype(np.float32)
+    values = values.reshape(-1)
+    colorCount = len(colorGradient)
+    colorGradient = colorGradient.reshape(-1)
+
+    # the kernel function
+    src = """
+    static float norm(float value, float a, float b) {
+        float n = (value - a) / (b - a);
+        if (n > 1.0) {
+            n = 1.0;
+        }
+        if (n < 0.0) {
+            n = 0.0;
+        }
+        return n;
+    }
+
+    __kernel void getImageData(__global uchar *bg, __global float *values, __global uchar *colors, __global uchar *result){
+        int nx = %d;
+        int colorCount = %d;
+        float dmin = %f;
+        float dmax = %f;
+        float alpha = %f;
+        float inv = 1.0 - alpha;
+
+        // get current position
+        int posx = get_global_id(1);
+        int posy = get_global_id(0);
+        int i = posy * nx * 3 + posx * 3;
+
+        // retrieve base image
+        int baseR = bg[i];
+        int baseG = bg[i+1];
+        int baseB = bg[i+2];
+
+        // retrieve data point
+        float value = values[posy * nx + posx];
+        float nvalue = norm(value, dmin, dmax);
+
+        // retrieve color
+        int colorIndex = (int) round(nvalue * (float)(colorCount - 1));
+        int r = colors[colorIndex*3];
+        int g = colors[colorIndex*3+1];
+        int b = colors[colorIndex*3+2];
+
+        // blend color with the base
+        if (alpha < 1.0) {
+            r = (int) round(((float) r * alpha) + ((float) baseR * inv));
+            g = (int) round(((float) g * alpha) + ((float) baseG * inv));
+            b = (int) round(((float) b * alpha) + ((float) baseB * inv));
+        }
+
+        // assign color to result
+        result[i] = r;
+        result[i+1] = g;
+        result[i+2] = b;
+
+    }
+    """ % (nx, colorCount, dMin, dMax, alpha)
+
+    # Get platforms, both CPU and GPU
+    plat = cl.get_platforms()
+    GPUs = plat[0].get_devices(device_type=cl.device_type.GPU)
+    CPU = plat[0].get_devices()
+
+    # prefer GPUs
+    if GPUs and len(GPUs) > 0:
+        print("Using GPU")
+        ctx = cl.Context(devices=GPUs)
+    else:
+        print("Warning: using CPU")
+        ctx = cl.Context(CPU)
+
+    # Create queue for each kernel execution
+    queue = cl.CommandQueue(ctx)
+    mf = cl.mem_flags
+
+    # Kernel function instantiation
+    prg = cl.Program(ctx, src).build()
+
+    inBg = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=bg)
+    inValues =  cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=values)
+    inColors =  cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=colorGradient)
+    outResult = cl.Buffer(ctx, mf.WRITE_ONLY, result.nbytes)
+
+    prg.getImageData(queue, (ny, nx), None, inBg, inValues, inColors, outResult)
+
+    # Copy result
+    cl.enqueue_copy(queue, result, outResult)
+
+    result = result.reshape((ny, nx, 3))
+    result = result.astype(np.uint8)
+
+    return result
+
 
 # Taken from https://github.com/matplotlib/matplotlib/blob/d4f1f8d0b1b71c97c3f750dfa9c16c1e9ab3261b/lib/matplotlib/_cm_listed.py
 def getColorGradient(name="inferno", multiply=255, toInt=True):
