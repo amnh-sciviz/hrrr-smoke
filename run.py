@@ -25,11 +25,12 @@ parser.add_argument('-fps', dest="FPS", default=30, type=int, help="Target frame
 parser.add_argument('-message', dest="MESSAGE", default=11, type=int, help="Message number to parse")
 parser.add_argument('-fhours', dest="TOTAL_FORECAST_HOURS", default=37, type=int, help="Total available forecast hours per datatime")
 parser.add_argument('-dim', dest="OUTPUT_DIMENSIONS", default="1920x1080", help="Dimensions of output video")
-parser.add_argument('-drange', dest="DATA_RANGE", default="0,30", help="Expected data range (to determine data color); reduce max for more dramatic colors")
+parser.add_argument('-drange', dest="DATA_RANGE", default="0,50", help="Expected data range (to determine data color); reduce max for more dramatic colors")
 parser.add_argument('-root', dest="ROOT_DATA", default=2.0, type=float, help="Apply root to data, 0 for none")
 parser.add_argument('-overwrite', dest="OVERWRITE", action="store_true")
 parser.add_argument('-device', dest="BUTTERFLOW_DEVICE", default=-1, type=int, help="Set a specific butterflow device (run butterflow -d for device numbers)")
 parser.add_argument('-cache', dest="CACHE_DIR", default="data/", help="Cache directory")
+parser.add_argument('-bg', dest="BG_IMAGE", default="bg.png", help="Cache directory")
 parser.add_argument('-steps', dest="STEPS", default=-1, type=int, help="Number of steps to execute; -1 for all")
 a = parser.parse_args()
 
@@ -87,28 +88,30 @@ while dt <= endDatetime:
                 grb = grbs.message(a.MESSAGE)
 
                 values = grb["values"]
+                if a.ROOT_DATA > 0:
+                    values = np.power(values, 1.0 / a.ROOT_DATA)
+
+                lats, lons = grb.latlons()
+                # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
+                print("lon range: %s, %s. lat range: %s, %s" % (lons.min(), lons.max(), lats.min(), lats.max()))
+
+                if doCache and not fromCache:
+                    np.save(cacheFilename, values)
 
             if values is None:
                 print("Could not find file %s" % filename)
                 sys.exit()
 
             ny, nx = values.shape
-            # lats, lons = grb.latlons()
-            # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
-
-            if a.ROOT_DATA > 0:
-                values = np.power(values, 1.0 / a.ROOT_DATA)
 
             # from matplotlib import pyplot as plt
             # plt.hist(values.reshape(-1), bins=1000)
             # plt.show()
             # sys.exit()
 
-            if doCache and not fromCache:
-                np.save(cacheFilename, values)
-
             # print("Lat/lon in range: (%s, %s) (%s, %s)" % (lon0, lat1, lon1, lat0))
-            pixels = dataToPixels(values, (dMin, dMax), colorGradient)
+            bgImage = Image.open(a.BG_IMAGE) if len(a.BG_IMAGE) > 0 else None
+            pixels = dataToPixels(values, (dMin, dMax), colorGradient, bgImage)
             im = Image.fromarray(pixels, mode="RGB")
 
             if nx != outWidth:

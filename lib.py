@@ -12,7 +12,14 @@ def dataToPixels(values, vRange, colorGradient, bg=None):
     alpha = 1.0
     if bg is None:
         bg = np.zeros(ny * nx * 3, dtype=np.uint8)
-        alpha = 0.8 # reduce to make bg more prominent
+
+    else:
+        alpha = 0.5 # reduce to make bg more prominent
+        bg = bg.convert("RGB")
+        bg = bg.resize((nx, ny))
+        bg = np.array(bg)
+        bg = bg.astype(np.uint8)
+        bg = bg.reshape(-1)
 
     dMin, dMax = vRange
 
@@ -69,7 +76,7 @@ def dataToPixels(values, vRange, colorGradient, bg=None):
         int b = colors[colorIndex*3+2];
 
         // blend color with the base
-        if (alpha < 1.0) {
+        if (alpha < 1.0 && (baseR > 0 || baseG > 0 || baseB > 0)) {
             r = (int) round(((float) r * alpha) + ((float) baseR * inv));
             g = (int) round(((float) g * alpha) + ((float) baseG * inv));
             b = (int) round(((float) b * alpha) + ((float) baseB * inv));
