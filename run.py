@@ -71,12 +71,10 @@ while dt <= endDatetime:
         frame += 1
 
         if not os.path.isfile(frameFilename) or a.OVERWRITE:
-            fromCache = False
 
             if os.path.isfile(cacheFilename):
                 print("Loading from cache %s" % cacheFilename)
                 values = np.load(cacheFilename)
-                fromCache = True
 
             elif os.path.isfile(filename):
                 # only import pygrib if we have to
@@ -94,8 +92,10 @@ while dt <= endDatetime:
                 lats, lons = grb.latlons()
                 # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
                 print("lon range: %s, %s. lat range: %s, %s" % (lons.min(), lons.max(), lats.min(), lats.max()))
+                values = projectData(values, lons, lats)
+                values = fillGaps(values)
 
-                if doCache and not fromCache:
+                if doCache:
                     np.save(cacheFilename, values)
 
             if values is None:

@@ -125,6 +125,77 @@ def dataToPixels(values, vRange, colorGradient, bg=None):
 
     return result
 
+def fillGaps(values):
+    ny, nx = values.shape
+
+    # flatten all data
+    values = values.astype(np.float32)
+    values = values.reshape(-1)
+
+    result = values[:]
+
+    # the kernel function
+    src = """
+    __kernel void fillDataGaps(__global float *values, __global float *result){
+        int ny = %d;
+        int nx = %d;
+
+        // get current position
+        int posx = get_global_id(1);
+        int posy = get_global_id(0);
+        int i = posy * nx + posx;
+
+        float value = values[i];
+
+        if (value <= 0.0 && posx > 0 && posy > 0 && posx < (nx-1) && posy < (ny-1)) {
+            float north = values[(posy-1) * nx + posx];
+            float south = values[(posy+1) * nx + posx];
+            float east = values[posy * nx + (posx+1)];
+            float west = values[posy * nx + (posx-1)];
+
+            if (north > 0.0 && south > 0.0 && east > 0.0 && west > 0.0) {
+                result[i] = (north+south+east+west) / 4.0;
+            }
+
+        } else {
+            result[i] = value;
+        }
+
+    }
+    """ % (ny, nx)
+
+    # Get platforms, both CPU and GPU
+    plat = cl.get_platforms()
+    GPUs = plat[0].get_devices(device_type=cl.device_type.GPU)
+    CPU = plat[0].get_devices()
+
+    # prefer GPUs
+    if GPUs and len(GPUs) > 0:
+        print("Using GPU")
+        ctx = cl.Context(devices=GPUs)
+    else:
+        print("Warning: using CPU")
+        ctx = cl.Context(CPU)
+
+    # Create queue for each kernel execution
+    queue = cl.CommandQueue(ctx)
+    mf = cl.mem_flags
+
+    # Kernel function instantiation
+    prg = cl.Program(ctx, src).build()
+
+    inValues =  cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=values)
+    outResult = cl.Buffer(ctx, mf.WRITE_ONLY, result.nbytes)
+
+    prg.fillDataGaps(queue, (ny, nx), None, inValues, outResult)
+
+    # Copy result
+    cl.enqueue_copy(queue, result, outResult)
+
+    result = result.reshape((ny, nx))
+    result = result.astype(np.float32)
+
+    return result
 
 # Taken from https://github.com/matplotlib/matplotlib/blob/d4f1f8d0b1b71c97c3f750dfa9c16c1e9ab3261b/lib/matplotlib/_cm_listed.py
 def getColorGradient(name="inferno", multiply=255, toInt=True):
@@ -663,6 +734,96 @@ def getColorGradient(name="inferno", multiply=255, toInt=True):
         data = np.rint(data)
         data = data.astype(np.uint8)
     return data
+
+def projectData(values, lons, lats):
+    ny, nx = values.shape
+    lonMin, lonMax, latMin, latMax = (lons.min(), lons.max(), lats.min(), lats.max())
+
+    values = values.astype(np.float32)
+    values = values.reshape(-1)
+    lons = lons.astype(np.float32)
+    lons = lons.reshape(-1)
+    lats = lats.astype(np.float32)
+    lats = lats.reshape(-1)
+
+    result = np.zeros(ny * nx, dtype=np.float32)
+
+    # the kernel function
+    src = """
+    static float norm(float value, float a, float b) {
+        float n = (value - a) / (b - a);
+        if (n > 1.0) {
+            n = 1.0;
+        }
+        if (n < 0.0) {
+            n = 0.0;
+        }
+        return n;
+    }
+
+    __kernel void getProjectedData(__global float *values, __global float *lons, __global float *lats, __global float *result){
+        int ny = %d;
+        int nx = %d;
+        float lonMin = %f;
+        float lonMax = %f;
+        float latMin = %f;
+        float latMax = %f;
+
+        // get current position
+        int posx = get_global_id(1);
+        int posy = get_global_id(0);
+        int i = posy * nx + posx;
+        float value = values[i];
+
+        // get target position based on lon/lat
+        float lon = lons[i];
+        float lat = lats[i];
+        float nlon = norm(lon, lonMin, lonMax);
+        float nlat = norm(lat, latMax, latMin);
+        int lx = (int) round(nlon * (float)(nx-1));
+        int ly = (int) round(nlat * (float)(ny-1));
+        int targetIndex = ly * nx + lx;
+
+        // assign value
+        result[targetIndex] = value;
+
+    }
+    """ % (ny, nx, lonMin, lonMax, latMin, latMax)
+
+    # Get platforms, both CPU and GPU
+    plat = cl.get_platforms()
+    GPUs = plat[0].get_devices(device_type=cl.device_type.GPU)
+    CPU = plat[0].get_devices()
+
+    # prefer GPUs
+    if GPUs and len(GPUs) > 0:
+        print("Using GPU")
+        ctx = cl.Context(devices=GPUs)
+    else:
+        print("Warning: using CPU")
+        ctx = cl.Context(CPU)
+
+    # Create queue for each kernel execution
+    queue = cl.CommandQueue(ctx)
+    mf = cl.mem_flags
+
+    # Kernel function instantiation
+    prg = cl.Program(ctx, src).build()
+
+    inValues =  cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=values)
+    inLons =  cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=lons)
+    inLats =  cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=lats)
+    outResult = cl.Buffer(ctx, mf.WRITE_ONLY, result.nbytes)
+
+    prg.getProjectedData(queue, (ny, nx), None, inValues, inLons, inLats, outResult)
+
+    # Copy result
+    cl.enqueue_copy(queue, result, outResult)
+
+    result = result.reshape((ny, nx))
+    result = result.astype(np.float32)
+
+    return result
 
 def roundInt(value):
     return int(round(value))
