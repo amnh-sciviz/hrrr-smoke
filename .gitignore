@@ -2,5 +2,4 @@
 output/*
 !output/.keep
 !output/frames/.keep
-data/*
-!data/.keep
+*.grib2.npy

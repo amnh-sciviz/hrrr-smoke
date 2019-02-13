@@ -30,8 +30,9 @@ parser.add_argument('-root', dest="ROOT_DATA", default=2.0, type=float, help="Ap
 parser.add_argument('-overwrite', dest="OVERWRITE", action="store_true")
 parser.add_argument('-device', dest="BUTTERFLOW_DEVICE", default=-1, type=int, help="Set a specific butterflow device (run butterflow -d for device numbers)")
 parser.add_argument('-cache', dest="CACHE_DIR", default="data/", help="Cache directory")
-parser.add_argument('-bg', dest="BG_IMAGE", default="bg.png", help="Cache directory")
+parser.add_argument('-bg', dest="BG_IMAGE", default="bg_lambert.png", help="Cache directory")
 parser.add_argument('-steps', dest="STEPS", default=-1, type=int, help="Number of steps to execute; -1 for all")
+parser.add_argument('-proj', dest="PROJECTION", default="lambert", help="lambert or equirectangular (will cause distortion)")
 a = parser.parse_args()
 
 # Parse arguments
@@ -89,11 +90,15 @@ while dt <= endDatetime:
                 if a.ROOT_DATA > 0:
                     values = np.power(values, 1.0 / a.ROOT_DATA)
 
-                lats, lons = grb.latlons()
-                # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
-                print("lon range: %s, %s. lat range: %s, %s" % (lons.min(), lons.max(), lats.min(), lats.max()))
-                values = projectData(values, lons, lats)
-                values = fillGaps(values)
+                if a.PROJECTION == "equirectangular":
+                    lats, lons = grb.latlons()
+                    # print("lon shape: %s ... lat shape: %s" % (lons.shape, lats.shape))
+                    print("lon range: %s, %s. lat range: %s, %s" % (lons.min(), lons.max(), lats.min(), lats.max()))
+                    values = projectData(values, lons, lats)
+                    values = fillGaps(values)
+
+                else:
+                    values = np.flip(values, axis=0)
 
                 if doCache:
                     np.save(cacheFilename, values)
